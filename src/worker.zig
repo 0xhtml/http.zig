@@ -576,6 +576,10 @@ pub fn NonBlocking(comptime S: type, comptime WSH: type) type {
                         .signal => self.processSignal(&closed_conn),
                         .recv => |conn| switch (conn.protocol) {
                             .http => |http_conn| {
+                                if (@atomicRmw(bool, &http_conn.bad, .Xchg, true, .seq_cst)) @panic("oh no");
+                                defer @atomicStore(bool, &http_conn.bad, false, .seq_cst);
+                                std.Thread.sleep(1e8);
+
                                 switch (http_conn.getState()) {
                                     .request, .keepalive => {},
                                     .active, .handover => {
@@ -1617,6 +1621,8 @@ pub const HTTPConn = struct {
     // misused (not all of the methods are safe to call from the non-worker
     // thread), we store the loop's FD which is more opaque.
     loop: i32,
+
+    bad: bool = false,
 
     fn init(allocator: Allocator, buffer_pool: *BufferPool, ws_worker: *anyopaque, loop: i32, config: *const Config) !HTTPConn {
         const conn_arena = try allocator.create(std.heap.ArenaAllocator);
